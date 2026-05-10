@@ -2,7 +2,17 @@ import type { PropsWithChildren } from "react";
 import { cn } from "@/lib/utils";
 
 export function Shell({ children }: PropsWithChildren) {
-  return <div className="min-h-screen bg-night text-mist">{children}</div>;
+  return (
+    <div className="relative min-h-screen bg-night text-mist">
+      <div aria-hidden="true" className="app-smoke-layer">
+        <span className="app-smoke app-smoke-a" />
+        <span className="app-smoke app-smoke-b" />
+        <span className="app-smoke app-smoke-c" />
+        <span className="app-smoke app-smoke-d" />
+      </div>
+      <div className="relative z-10">{children}</div>
+    </div>
+  );
 }
 
 export function GlassCard({ children, className = "" }: PropsWithChildren<{ className?: string }>) {

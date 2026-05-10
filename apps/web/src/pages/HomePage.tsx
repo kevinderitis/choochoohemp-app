@@ -332,7 +332,7 @@ export function HomePage() {
       </div>
 
       <section>
-        <GlassCard className="overflow-hidden rounded-[2rem] border-white/8 bg-[#0d1512]">
+        <GlassCard className="overflow-hidden rounded-[2rem] border-transparent bg-[#0d1512] shadow-none">
           <div className="relative isolate flex min-h-[calc(100svh-12.5rem)] flex-col justify-between overflow-hidden transform-gpu sm:min-h-[calc(100svh-11.5rem)]">
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(34,84,58,0.26),transparent_34%),radial-gradient(circle_at_bottom,rgba(15,34,25,0.38),transparent_30%)]" />
             <div className="relative flex min-h-0 flex-1 items-stretch justify-center overflow-hidden">
