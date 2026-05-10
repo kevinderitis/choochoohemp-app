@@ -1,0 +1,19 @@
+{
+  "name": "choochoo-hemp",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev -w @choochoo/api\" \"npm run dev -w @choochoo/web\"",
+    "build": "npm run build -w @choochoo/shared && npm run build -w @choochoo/api && npm run build -w @choochoo/web",
+    "start": "npm run start -w @choochoo/api",
+    "import:products": "npm run import:products -w @choochoo/api",
+    "seed:admin": "npm run seed:admin -w @choochoo/api"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}
