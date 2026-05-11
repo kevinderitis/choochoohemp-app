@@ -3,7 +3,8 @@ import { cn } from "@/lib/utils";
 
 export function Shell({ children }: PropsWithChildren) {
   return (
-    <div className="relative min-h-screen bg-night text-mist">
+    <div className="relative min-h-screen bg-black text-mist">
+      <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 z-0 h-[26rem] bg-gradient-to-b from-black via-black to-[#08110d]" />
       <div aria-hidden="true" className="app-smoke-layer">
         <span className="app-smoke app-smoke-a" />
         <span className="app-smoke app-smoke-b" />
@@ -16,7 +17,7 @@ export function Shell({ children }: PropsWithChildren) {
 }
 
 export function GlassCard({ children, className = "" }: PropsWithChildren<{ className?: string }>) {
-  return <div className={cn("rounded-3xl border border-white/10 bg-white/5 backdrop-blur-xl shadow-glow", className)}>{children}</div>;
+  return <div className={cn("rounded-3xl border border-transparent bg-white/5 backdrop-blur-xl shadow-glow", className)}>{children}</div>;
 }
 
 export function SectionTitle({ eyebrow, title, body }: { eyebrow: string; title: string; body?: string }) {

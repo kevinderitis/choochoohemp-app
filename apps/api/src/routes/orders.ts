@@ -9,6 +9,7 @@ import { sendPushToRole } from "../services/push.js";
 import { asyncHandler, HttpError } from "../utils/http.js";
 
 const router = express.Router();
+const FREE_DELIVERY_THRESHOLD = 500;
 
 const orderSchema = z.object({
   items: z.array(
@@ -49,7 +50,7 @@ router.post(
 
     const subtotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
     const settings = await getSettings();
-    const deliveryFee = settings.deliveryFee;
+    const deliveryFee = subtotal >= FREE_DELIVERY_THRESHOLD ? 0 : settings.deliveryFee;
     const total = subtotal + deliveryFee;
 
     const order = await Order.create({

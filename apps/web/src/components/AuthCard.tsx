@@ -14,8 +14,8 @@ type AuthForm = {
   address: string;
 };
 
-export function AuthCard() {
-  const [mode, setMode] = useState<"login" | "register">("register");
+export function AuthCard({ initialMode = "login" }: { initialMode?: "login" | "register" }) {
+  const [mode, setMode] = useState<"login" | "register">(initialMode);
   const setUser = useAppStore((state) => state.setUser);
   const { register, handleSubmit } = useForm<AuthForm>();
 

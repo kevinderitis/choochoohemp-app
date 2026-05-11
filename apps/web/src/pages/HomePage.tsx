@@ -1,17 +1,55 @@
 import { motion } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import type { Product } from "@choochoo/shared";
-import { ChevronDown, ChevronLeft, ShoppingCart } from "lucide-react";
+import { ChevronDown, ShoppingCart } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAppStore } from "@/lib/store";
 import { cn, formatCurrency } from "@/lib/utils";
+import { BlurText } from "@/components/BlurText";
 import { GlassCard } from "@/components/ui";
 import { PwaPrompt } from "@/components/PwaPrompt";
 
 type CatalogCategory = "strains" | "edibles" | "nicotine";
 type StrainFilter = "all" | "indica" | "sativa" | "hybrid";
+const HOME_SNAPSHOT_KEY = "choochoo-home-snapshot";
+
+type HomeSnapshot = {
+  scrollY: number;
+  selectedCategory: CatalogCategory;
+  selectedStrainFilter: StrainFilter;
+  filtersCollapsed: boolean;
+  filtersPinned: boolean;
+  hasAutoCollapsed: boolean;
+};
+
+function readHomeSnapshot() {
+  try {
+    const raw = sessionStorage.getItem(HOME_SNAPSHOT_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<HomeSnapshot>;
+    const category =
+      parsed.selectedCategory && ["strains", "edibles", "nicotine"].includes(parsed.selectedCategory)
+        ? (parsed.selectedCategory as CatalogCategory)
+        : "strains";
+    const strainFilter =
+      parsed.selectedStrainFilter && ["all", "indica", "sativa", "hybrid"].includes(parsed.selectedStrainFilter)
+        ? (parsed.selectedStrainFilter as StrainFilter)
+        : "all";
+
+    return {
+      scrollY: Number(parsed.scrollY || 0),
+      selectedCategory: category,
+      selectedStrainFilter: strainFilter,
+      filtersCollapsed: Boolean(parsed.filtersCollapsed),
+      filtersPinned: Boolean(parsed.filtersPinned),
+      hasAutoCollapsed: Boolean(parsed.hasAutoCollapsed)
+    } satisfies HomeSnapshot;
+  } catch {
+    return null;
+  }
+}
 
 const categoryTabs: Array<{ id: CatalogCategory; label: string }> = [
   { id: "strains", label: "Strains" },
@@ -56,7 +94,7 @@ function CategoryTabs({
 }) {
   return (
     <div className="flex justify-center">
-      <div className="grid w-full max-w-xl grid-cols-3 items-center gap-2 rounded-full border border-white/10 bg-[#101714] p-2">
+      <div className="grid w-full max-w-xl grid-cols-3 items-center gap-2 rounded-full bg-[#101714] p-2 ring-1 ring-white/5">
         {categoryTabs.map((tab) => (
           <button
             key={tab.id}
@@ -83,7 +121,7 @@ function StrainTypeTabs({
 }) {
   return (
     <div className="flex justify-center">
-      <div className="flex w-full max-w-xl items-center justify-center gap-2 rounded-full border border-white/10 bg-[#101714]/95 px-2 py-2">
+      <div className="flex w-full max-w-xl items-center justify-center gap-2 rounded-full bg-[#101714]/95 px-2 py-2 ring-1 ring-white/5">
         {[
           { id: "all", label: "All" },
           { id: "indica", label: "Indica" },
@@ -106,7 +144,7 @@ function StrainTypeTabs({
   );
 }
 
-function StrainCard({ product, onAdd }: { product: Product; onAdd: () => void }) {
+function StrainCard({ product, onOpen }: { product: Product; onOpen: () => void }) {
   const effects = product.tags.filter((tag) => !["5a+", "5a", "4a+", "4a", "3a+", "3a"].includes(tag.toLowerCase())).slice(0, 3);
   const grade = String(product.metadata?.grade || "");
   const stamp = getPromoStamp(product);
@@ -118,7 +156,7 @@ function StrainCard({ product, onAdd }: { product: Product; onAdd: () => void })
 
   return (
     <motion.article whileHover={{ y: -4 }} className="mx-auto h-full w-full max-w-[320px]">
-      <GlassCard className="relative flex h-full min-h-[208px] flex-col rounded-[1.7rem] border-white/8 bg-[#171717] p-4">
+      <GlassCard className="relative flex h-full min-h-[208px] flex-col rounded-[1.7rem] bg-[#171717] p-4">
         {stamp ? (
           <div className="absolute right-3 top-3 rounded-[1rem] border border-lime-300/60 bg-rose-500 px-2.5 py-2 text-right text-[10px] font-extrabold uppercase leading-none text-white shadow-lg shadow-rose-950/40">
             {stamp}
@@ -143,7 +181,7 @@ function StrainCard({ product, onAdd }: { product: Product; onAdd: () => void })
 
         <div className="mb-5 flex flex-wrap gap-2">
           {effects.map((effect) => (
-            <span key={effect} className="rounded-2xl border border-white/10 bg-white/[0.03] px-3 py-1 text-xs text-mist/65">
+            <span key={effect} className="rounded-2xl bg-white/[0.03] px-3 py-1 text-xs text-mist/65 ring-1 ring-white/5">
               {effect}
             </span>
           ))}
@@ -156,7 +194,7 @@ function StrainCard({ product, onAdd }: { product: Product; onAdd: () => void })
         </div>
 
         <div className="mt-4 grid gap-2">
-          <Link to={`/product/${product.slug}`} className="rounded-[1rem] bg-[#1976e9] px-5 py-3 text-center text-base font-semibold text-white">
+          <Link to={`/product/${product.slug}`} onClick={onOpen} className="rounded-[1rem] bg-[#1976e9] px-5 py-3 text-center text-base font-semibold text-white">
             View more
           </Link>
         </div>
@@ -165,10 +203,10 @@ function StrainCard({ product, onAdd }: { product: Product; onAdd: () => void })
   );
 }
 
-function ProductImageCard({ product, onAdd }: { product: Product; onAdd: () => void }) {
+function ProductImageCard({ product, onOpen }: { product: Product; onOpen: () => void }) {
   return (
     <motion.article whileHover={{ y: -4 }} className="mx-auto h-full w-full max-w-[320px]">
-      <GlassCard className="flex h-full min-h-[390px] flex-col overflow-hidden rounded-[1.7rem] border-white/8 bg-[#171717]">
+      <GlassCard className="flex h-full min-h-[390px] flex-col overflow-hidden rounded-[1.7rem] bg-[#171717]">
         <div className="aspect-[1.15/1] overflow-hidden bg-black/40">
           <img src={product.image || "/logo.png"} alt={product.name} className="h-full w-full object-cover" />
         </div>
@@ -180,7 +218,7 @@ function ProductImageCard({ product, onAdd }: { product: Product; onAdd: () => v
           </div>
           <div className="mt-auto space-y-3">
             <span className="block text-center text-lg font-semibold text-emerald-200">{formatCurrency(product.price)}</span>
-            <Link to={`/product/${product.slug}`} className="block rounded-[1rem] bg-[#1976e9] px-4 py-3 text-center text-base font-semibold text-white">
+            <Link to={`/product/${product.slug}`} onClick={onOpen} className="block rounded-[1rem] bg-[#1976e9] px-4 py-3 text-center text-base font-semibold text-white">
               View more
             </Link>
           </div>
@@ -191,19 +229,26 @@ function ProductImageCard({ product, onAdd }: { product: Product; onAdd: () => v
 }
 
 export function HomePage() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const shouldRestoreCatalog = Boolean((location.state as { restoreCatalog?: boolean } | null)?.restoreCatalog);
+  const initialSnapshot = shouldRestoreCatalog ? readHomeSnapshot() : null;
   const addToCart = useAppStore((state) => state.addToCart);
   const cartCount = useAppStore((state) => state.cart.reduce((sum, item) => sum + item.quantity, 0));
-  const [selectedCategory, setSelectedCategory] = useState<CatalogCategory>("strains");
-  const [selectedStrainFilter, setSelectedStrainFilter] = useState<StrainFilter>("all");
-  const [filtersCollapsed, setFiltersCollapsed] = useState(false);
-  const [filtersPinned, setFiltersPinned] = useState(false);
-  const [hasAutoCollapsed, setHasAutoCollapsed] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState<CatalogCategory>(initialSnapshot?.selectedCategory || "strains");
+  const [selectedStrainFilter, setSelectedStrainFilter] = useState<StrainFilter>(initialSnapshot?.selectedStrainFilter || "all");
+  const [filtersCollapsed, setFiltersCollapsed] = useState(initialSnapshot?.filtersCollapsed ?? false);
+  const [filtersPinned, setFiltersPinned] = useState(initialSnapshot?.filtersPinned ?? false);
+  const [hasAutoCollapsed, setHasAutoCollapsed] = useState(initialSnapshot?.hasAutoCollapsed ?? false);
   const filtersWrapperRef = useRef<HTMLDivElement | null>(null);
   const productsGridRef = useRef<HTMLDivElement | null>(null);
   const suppressAutoCollapseRef = useRef(false);
   const lastScrollYRef = useRef(0);
   const lastGestureAtRef = useRef(0);
   const downScrollCountRef = useRef(0);
+  const restoringCatalogRef = useRef(shouldRestoreCatalog);
+  const pendingRestoreScrollRef = useRef<number | null>(null);
+  const shouldReplaceRestoreStateRef = useRef(false);
 
   const { data } = useQuery({
     queryKey: ["products"],
@@ -218,7 +263,76 @@ export function HomePage() {
     return byCategory.filter((product) => (product.strainType || "unknown").toLowerCase() === selectedStrainFilter);
   }, [products, selectedCategory, selectedStrainFilter]);
 
+  function persistCatalogState() {
+    const snapshot: HomeSnapshot = {
+      scrollY: window.scrollY,
+      selectedCategory,
+      selectedStrainFilter,
+      filtersCollapsed,
+      filtersPinned,
+      hasAutoCollapsed
+    };
+    sessionStorage.setItem(HOME_SNAPSHOT_KEY, JSON.stringify(snapshot));
+  }
+
   useEffect(() => {
+    if ("scrollRestoration" in window.history) {
+      window.history.scrollRestoration = "manual";
+    }
+  }, []);
+
+  useEffect(() => {
+    persistCatalogState();
+    window.addEventListener("scroll", persistCatalogState, { passive: true });
+    return () => window.removeEventListener("scroll", persistCatalogState);
+  }, [selectedCategory, selectedStrainFilter, filtersCollapsed, filtersPinned, hasAutoCollapsed]);
+
+  useLayoutEffect(() => {
+    if (!shouldRestoreCatalog || !initialSnapshot) return;
+
+    restoringCatalogRef.current = true;
+    pendingRestoreScrollRef.current = Number.isFinite(initialSnapshot.scrollY) ? initialSnapshot.scrollY : 0;
+    shouldReplaceRestoreStateRef.current = true;
+    suppressAutoCollapseRef.current = true;
+    downScrollCountRef.current = 0;
+
+    const restoreScroll = () => window.scrollTo({ top: Number.isFinite(initialSnapshot.scrollY) ? initialSnapshot.scrollY : 0, behavior: "auto" });
+    restoreScroll();
+    requestAnimationFrame(() => {
+      restoreScroll();
+    });
+  }, [initialSnapshot, navigate, shouldRestoreCatalog]);
+
+  useEffect(() => {
+    if (pendingRestoreScrollRef.current === null) return;
+    if (!filteredProducts.length) return;
+
+    const targetScroll = pendingRestoreScrollRef.current;
+    const restoreScroll = () => window.scrollTo({ top: targetScroll, behavior: "auto" });
+
+    restoreScroll();
+    requestAnimationFrame(() => {
+      restoreScroll();
+      requestAnimationFrame(() => {
+        restoreScroll();
+        pendingRestoreScrollRef.current = null;
+        restoringCatalogRef.current = false;
+        if (shouldReplaceRestoreStateRef.current) {
+          shouldReplaceRestoreStateRef.current = false;
+          navigate(location.pathname, { replace: true, state: null });
+        }
+      });
+    });
+  }, [filteredProducts]);
+
+  useEffect(() => {
+    if (restoringCatalogRef.current) {
+      setFiltersCollapsed(true);
+      setHasAutoCollapsed(true);
+      suppressAutoCollapseRef.current = true;
+      downScrollCountRef.current = 0;
+      return;
+    }
     setSelectedStrainFilter("all");
     setFiltersCollapsed(false);
     setFiltersPinned(false);
@@ -228,6 +342,13 @@ export function HomePage() {
   }, [selectedCategory]);
 
   useEffect(() => {
+    if (restoringCatalogRef.current) {
+      setFiltersCollapsed(true);
+      setHasAutoCollapsed(true);
+      suppressAutoCollapseRef.current = true;
+      downScrollCountRef.current = 0;
+      return;
+    }
     setFiltersCollapsed(false);
     setFiltersPinned(false);
     setHasAutoCollapsed(false);
@@ -241,13 +362,14 @@ export function HomePage() {
 
     function updateOffset() {
       const wrapperTop = filtersWrapperRef.current?.getBoundingClientRect().top ?? stickyTop;
-      const nextOffset = Math.max(0, Math.round(wrapperTop - stickyTop));
+      const wrapperHeight = filtersWrapperRef.current?.getBoundingClientRect().height ?? 0;
+      const stickyActive = wrapperTop <= stickyTop + 1;
+      const nextOffset = stickyActive ? Math.max(0, Math.round(wrapperHeight - 12)) : 0;
       if (nextOffset !== lastOffset && productsGridRef.current) {
         lastOffset = nextOffset;
         productsGridRef.current.style.paddingTop = `${nextOffset}px`;
       }
 
-      const stickyActive = wrapperTop <= stickyTop + 1;
       setFiltersPinned((current) => (current === stickyActive ? current : stickyActive));
 
       if (!stickyActive) {
@@ -318,7 +440,7 @@ export function HomePage() {
             </div>
             <div className="flex items-center gap-3">
               <PwaPrompt />
-              <Link to="/checkout" className="relative rounded-full border border-white/10 bg-white/5 p-3 text-sm font-semibold">
+              <Link to="/checkout" onClick={persistCatalogState} className="relative rounded-full border border-white/10 bg-white/5 p-3 text-sm font-semibold">
                 <ShoppingCart className="h-5 w-5" />
                 {cartCount ? (
                   <span className="absolute -right-1 -top-1 rounded-full bg-emerald-300 px-1.5 py-0.5 text-[10px] font-bold text-night">
@@ -331,8 +453,8 @@ export function HomePage() {
         </header>
       </div>
 
-      <section>
-        <GlassCard className="overflow-hidden rounded-[2rem] border-transparent bg-[#0d1512] shadow-none">
+      <section className="-mx-4 sm:-mx-6 lg:-mx-10">
+        <GlassCard className="overflow-hidden rounded-b-[2rem] rounded-t-none border-transparent bg-black shadow-none">
           <div className="relative isolate flex min-h-[calc(100svh-12.5rem)] flex-col justify-between overflow-hidden transform-gpu sm:min-h-[calc(100svh-11.5rem)]">
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(34,84,58,0.26),transparent_34%),radial-gradient(circle_at_bottom,rgba(15,34,25,0.38),transparent_30%)]" />
             <div className="relative flex min-h-0 flex-1 items-stretch justify-center overflow-hidden">
@@ -355,6 +477,27 @@ export function HomePage() {
             </div>
           </div>
         </GlassCard>
+      </section>
+
+      <section className="px-2 pb-3 pt-28 sm:pb-5 sm:pt-40">
+        <div className="mx-auto max-w-5xl space-y-4 text-center">
+          <BlurText
+            text="Explore our catalog"
+            className="mx-auto justify-center font-display text-3xl font-bold tracking-[-0.03em] text-white sm:text-5xl"
+            delay={190}
+            animateBy="words"
+            direction="top"
+            threshold={0.35}
+            rootMargin="-40px"
+            stepDuration={0.42}
+          />
+          <p className="mx-auto max-w-2xl text-sm text-mist/58 sm:text-base">
+            Order premium strains, edibles, and nicotine online with fast local delivery.
+          </p>
+        </div>
+        <div className="mx-auto mt-10 max-w-5xl overflow-hidden rounded-[2rem] bg-[#0d1512]/65 shadow-[0_30px_70px_rgba(0,0,0,0.28)] ring-1 ring-white/5">
+          <img src="/catalog-showcase.png" alt="Strains, edibles, and nicotine showcase" className="h-auto w-full object-cover" />
+        </div>
       </section>
 
       <section id="catalog" className="pt-5">
@@ -412,31 +555,9 @@ export function HomePage() {
           {filteredProducts.map((product) => (
             <div key={product.id}>
               {selectedCategory === "strains" ? (
-                <StrainCard
-                  product={product}
-                  onAdd={() =>
-                    addToCart({
-                      productId: product.id,
-                      name: product.name,
-                      price: product.price,
-                      image: product.image,
-                      quantity: 1
-                    })
-                  }
-                />
+                <StrainCard product={product} onOpen={persistCatalogState} />
               ) : (
-                <ProductImageCard
-                  product={product}
-                  onAdd={() =>
-                    addToCart({
-                      productId: product.id,
-                      name: product.name,
-                      price: product.price,
-                      image: product.image,
-                      quantity: 1
-                    })
-                  }
-                />
+                <ProductImageCard product={product} onOpen={persistCatalogState} />
               )}
             </div>
           ))}
