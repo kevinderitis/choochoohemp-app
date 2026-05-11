@@ -1,7 +1,10 @@
+import { motion } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
 import type { Product } from "@choochoo/shared";
 import { ArrowLeft, Heart, X } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
+import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { useAppStore } from "@/lib/store";
 import { cn, formatCurrency } from "@/lib/utils";
@@ -11,10 +14,17 @@ export function ProductPage() {
   const navigate = useNavigate();
   const { slug = "" } = useParams();
   const addToCart = useAppStore((state) => state.addToCart);
+  const [addedKey, setAddedKey] = useState<string | null>(null);
   const { data } = useQuery({
     queryKey: ["product", slug],
     queryFn: async () => (await api.product(slug)) as { product: Product }
   });
+
+  useEffect(() => {
+    if (!addedKey) return;
+    const timeout = window.setTimeout(() => setAddedKey(null), 1200);
+    return () => window.clearTimeout(timeout);
+  }, [addedKey]);
 
   const product = data?.product;
   if (!product) return <div className="p-8">Loading...</div>;
@@ -38,6 +48,11 @@ export function ProductPage() {
           : "bg-violet-500/15 text-violet-200"
       : "bg-emerald-500/15 text-emerald-200";
   const percent = Number(metadata.indica_percent || metadata.sativa_percent || 0);
+
+  function confirmAdd(key: string, label?: string) {
+    setAddedKey(key);
+    toast.success(label ? `${product.name} ${label} added to cart` : `${product.name} added to cart`);
+  }
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-4 sm:px-6 sm:py-6">
@@ -89,10 +104,12 @@ export function ProductPage() {
                   <span className="text-base text-mist/75 sm:text-lg">{tier.amount}</span>
                   <span className="text-base font-semibold text-white sm:text-lg">{Math.round(tier.price)}.-</span>
                   <div className="flex justify-center">
-                    <button
-                      onClick={() =>
+                    <motion.button
+                      whileTap={{ scale: 0.96 }}
+                      onClick={() => {
+                        const key = `${product.id}-${tier.amount}`;
                         addToCart({
-                          lineId: `${product.id}-${tier.amount}`,
+                          lineId: key,
                           productId: product.id,
                           sourceProductId: product.id,
                           name: product.name,
@@ -100,13 +117,16 @@ export function ProductPage() {
                           price: tier.price,
                           image: product.image,
                           quantity: 1
-                        })
-                      }
+                        });
+                        confirmAdd(key, tier.amount);
+                      }}
+                      animate={addedKey === `${product.id}-${tier.amount}` ? { scale: [1, 1.04, 1], backgroundColor: ["#1976e9", "#34d399", "#1976e9"] } : undefined}
+                      transition={{ duration: 0.45, ease: "easeOut" }}
                       className="inline-flex min-w-[96px] items-center justify-center gap-2 rounded-[0.9rem] bg-[#1976e9] px-3 py-2 text-sm font-semibold text-white sm:min-w-[112px] sm:px-4 sm:py-2.5"
                     >
                       <Heart className="h-4 w-4" />
-                      Add
-                    </button>
+                      {addedKey === `${product.id}-${tier.amount}` ? "Added" : "Add"}
+                    </motion.button>
                   </div>
                 </div>
               ))}
@@ -117,8 +137,10 @@ export function ProductPage() {
               <div className="space-y-4">
                 <p className="text-sm text-mist/70">{product.description}</p>
                 <div className="text-xl font-bold text-emerald-200 sm:text-2xl">{formatCurrency(product.price)}</div>
-                <button
-                  onClick={() =>
+                <motion.button
+                  whileTap={{ scale: 0.97 }}
+                  onClick={() => {
+                    const key = `${product.id}-default`;
                     addToCart({
                       productId: product.id,
                       sourceProductId: product.id,
@@ -126,12 +148,15 @@ export function ProductPage() {
                       price: product.price,
                       image: product.image,
                       quantity: 1
-                    })
-                  }
+                    });
+                    confirmAdd(key);
+                  }}
+                  animate={addedKey === `${product.id}-default` ? { scale: [1, 1.03, 1], backgroundColor: ["#1976e9", "#34d399", "#1976e9"] } : undefined}
+                  transition={{ duration: 0.45, ease: "easeOut" }}
                   className="rounded-[1rem] bg-[#1976e9] px-4 py-2.5 text-sm font-semibold text-white sm:px-5 sm:py-3"
                 >
-                  Add to cart
-                </button>
+                  {addedKey === `${product.id}-default` ? "Added to cart" : "Add to cart"}
+                </motion.button>
               </div>
             </div>
           )}

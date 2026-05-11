@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import type { Product } from "@choochoo/shared";
-import { ChevronDown, ShoppingCart } from "lucide-react";
+import { ChevronDown, ShoppingCart, SlidersHorizontal, X } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAppStore } from "@/lib/store";
 import { cn, formatCurrency } from "@/lib/utils";
@@ -13,15 +13,15 @@ import { PwaPrompt } from "@/components/PwaPrompt";
 
 type CatalogCategory = "strains" | "edibles" | "nicotine";
 type StrainFilter = "all" | "indica" | "sativa" | "hybrid";
+type SortOption = "featured" | "price-asc" | "price-desc" | "name-asc";
 const HOME_SNAPSHOT_KEY = "choochoo-home-snapshot";
 
 type HomeSnapshot = {
   scrollY: number;
   selectedCategory: CatalogCategory;
   selectedStrainFilter: StrainFilter;
-  filtersCollapsed: boolean;
-  filtersPinned: boolean;
-  hasAutoCollapsed: boolean;
+  selectedGrades: string[];
+  sortBy: SortOption;
 };
 
 function readHomeSnapshot() {
@@ -42,9 +42,11 @@ function readHomeSnapshot() {
       scrollY: Number(parsed.scrollY || 0),
       selectedCategory: category,
       selectedStrainFilter: strainFilter,
-      filtersCollapsed: Boolean(parsed.filtersCollapsed),
-      filtersPinned: Boolean(parsed.filtersPinned),
-      hasAutoCollapsed: Boolean(parsed.hasAutoCollapsed)
+      selectedGrades: Array.isArray(parsed.selectedGrades) ? parsed.selectedGrades.filter((value): value is string => typeof value === "string") : [],
+      sortBy:
+        parsed.sortBy && ["featured", "price-asc", "price-desc", "name-asc"].includes(parsed.sortBy)
+          ? (parsed.sortBy as SortOption)
+          : "featured"
     } satisfies HomeSnapshot;
   } catch {
     return null;
@@ -87,14 +89,20 @@ function getStartPrice(product: Product) {
 
 function CategoryTabs({
   selectedCategory,
-  setSelectedCategory
+  setSelectedCategory,
+  filtersOpen,
+  setFiltersOpen,
+  activeFiltersCount
 }: {
   selectedCategory: CatalogCategory;
   setSelectedCategory: (value: CatalogCategory) => void;
+  filtersOpen: boolean;
+  setFiltersOpen: (value: boolean) => void;
+  activeFiltersCount: number;
 }) {
   return (
-    <div className="flex justify-center">
-      <div className="grid w-full max-w-xl grid-cols-3 items-center gap-2 rounded-full bg-[#101714] p-2 ring-1 ring-white/5">
+    <div className="mx-auto flex w-full max-w-5xl items-center gap-2 rounded-[1.5rem] bg-[#101714]/96 p-2 ring-1 ring-white/5 backdrop-blur-xl">
+      <div className="grid min-w-0 flex-1 grid-cols-3 items-center gap-2">
         {categoryTabs.map((tab) => (
           <button
             key={tab.id}
@@ -108,40 +116,136 @@ function CategoryTabs({
           </button>
         ))}
       </div>
+      <button
+        type="button"
+        onClick={() => setFiltersOpen(!filtersOpen)}
+        className={cn(
+          "inline-flex shrink-0 items-center gap-2 rounded-full px-3 py-2.5 text-sm font-semibold transition",
+          filtersOpen ? "bg-white/12 text-white" : "bg-white/5 text-mist/78 hover:bg-white/8 hover:text-white"
+        )}
+      >
+        {filtersOpen ? <X className="h-4 w-4" /> : <SlidersHorizontal className="h-4 w-4" />}
+        <span>Filters</span>
+        {activeFiltersCount ? (
+          <span className="rounded-full bg-emerald-300 px-1.5 py-0.5 text-[10px] font-bold text-night">{activeFiltersCount}</span>
+        ) : null}
+      </button>
     </div>
   );
 }
 
-function StrainTypeTabs({
-  selectedStrainFilter,
-  setSelectedStrainFilter
+function FilterChip({
+  active,
+  label,
+  onClick
 }: {
-  selectedStrainFilter: StrainFilter;
-  setSelectedStrainFilter: (value: StrainFilter) => void;
+  active: boolean;
+  label: string;
+  onClick: () => void;
 }) {
   return (
-    <div className="flex justify-center">
-      <div className="flex w-full max-w-xl items-center justify-center gap-2 rounded-full bg-[#101714]/95 px-2 py-2 ring-1 ring-white/5">
-        {[
-          { id: "all", label: "All" },
-          { id: "indica", label: "Indica" },
-          { id: "sativa", label: "Sativa" },
-          { id: "hybrid", label: "Hybrid" }
-        ].map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => setSelectedStrainFilter(tab.id as StrainFilter)}
-            className={cn(
-              "rounded-full px-4 py-2 text-sm font-semibold transition",
-              selectedStrainFilter === tab.id ? "bg-violet-500/90 text-white" : "text-mist/70 hover:bg-white/5 hover:text-white"
-            )}
-          >
-            {tab.label}
-          </button>
-        ))}
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "rounded-full px-3 py-2 text-sm font-medium transition",
+        active ? "bg-emerald-300 text-night" : "bg-white/[0.04] text-mist/72 ring-1 ring-white/6 hover:bg-white/[0.07] hover:text-white"
+      )}
+    >
+      {label}
+    </button>
+  );
+}
+
+function FiltersPanel({
+  selectedCategory,
+  selectedStrainFilter,
+  setSelectedStrainFilter,
+  selectedGrades,
+  toggleGrade,
+  clearFilters,
+  sortBy,
+  setSortBy,
+  availableGrades
+}: {
+  selectedCategory: CatalogCategory;
+  selectedStrainFilter: StrainFilter;
+  setSelectedStrainFilter: (value: StrainFilter) => void;
+  selectedGrades: string[];
+  toggleGrade: (value: string) => void;
+  clearFilters: () => void;
+  sortBy: SortOption;
+  setSortBy: (value: SortOption) => void;
+  availableGrades: string[];
+}) {
+  return (
+    <div className="mx-auto mt-3 w-full max-w-5xl rounded-[1.8rem] bg-[#101714]/96 p-4 ring-1 ring-white/5 backdrop-blur-xl sm:p-5">
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.26em] text-emerald-300/65">Refine catalog</p>
+          <p className="mt-1 text-sm text-mist/62">Sort products and narrow results without changing the scroll flow.</p>
+        </div>
+        <button type="button" onClick={clearFilters} className="text-sm font-semibold text-emerald-200 transition hover:text-white">
+          Clear all
+        </button>
+      </div>
+
+      <div className="mt-4 space-y-4">
+        <div className="space-y-2">
+          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-mist/52">Sort by</p>
+          <div className="flex flex-wrap gap-2">
+            {[
+              { id: "featured", label: "Featured" },
+              { id: "price-asc", label: "Price low to high" },
+              { id: "price-desc", label: "Price high to low" },
+              { id: "name-asc", label: "Name A-Z" }
+            ].map((option) => (
+              <FilterChip key={option.id} active={sortBy === option.id} label={option.label} onClick={() => setSortBy(option.id as SortOption)} />
+            ))}
+          </div>
+        </div>
+
+        {selectedCategory === "strains" ? (
+          <div className="space-y-2">
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-mist/52">Strain type</p>
+            <div className="flex flex-wrap gap-2">
+              {[
+                { id: "all", label: "All" },
+                { id: "indica", label: "Indica" },
+                { id: "sativa", label: "Sativa" },
+                { id: "hybrid", label: "Hybrid" }
+              ].map((option) => (
+                <FilterChip
+                  key={option.id}
+                  active={selectedStrainFilter === option.id}
+                  label={option.label}
+                  onClick={() => setSelectedStrainFilter(option.id as StrainFilter)}
+                />
+              ))}
+            </div>
+          </div>
+        ) : null}
+
+        {availableGrades.length ? (
+          <div className="space-y-2">
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-mist/52">Category / grade</p>
+            <div className="flex flex-wrap gap-2">
+              {availableGrades.map((grade) => (
+                <FilterChip key={grade} active={selectedGrades.includes(grade)} label={grade.toUpperCase()} onClick={() => toggleGrade(grade)} />
+              ))}
+            </div>
+          </div>
+        ) : null}
       </div>
     </div>
   );
+}
+
+function getProductGrade(product: Product) {
+  const metadataGrade = String(product.metadata?.grade || "").trim().toLowerCase();
+  if (metadataGrade) return metadataGrade;
+  const tagGrade = product.tags.find((tag) => /^\d+a\+?$/i.test(tag.trim()));
+  return tagGrade ? tagGrade.trim().toLowerCase() : "";
 }
 
 function StrainCard({ product, onOpen }: { product: Product; onOpen: () => void }) {
@@ -233,22 +337,18 @@ export function HomePage() {
   const navigate = useNavigate();
   const shouldRestoreCatalog = Boolean((location.state as { restoreCatalog?: boolean } | null)?.restoreCatalog);
   const initialSnapshot = shouldRestoreCatalog ? readHomeSnapshot() : null;
-  const addToCart = useAppStore((state) => state.addToCart);
   const cartCount = useAppStore((state) => state.cart.reduce((sum, item) => sum + item.quantity, 0));
   const [selectedCategory, setSelectedCategory] = useState<CatalogCategory>(initialSnapshot?.selectedCategory || "strains");
   const [selectedStrainFilter, setSelectedStrainFilter] = useState<StrainFilter>(initialSnapshot?.selectedStrainFilter || "all");
-  const [filtersCollapsed, setFiltersCollapsed] = useState(initialSnapshot?.filtersCollapsed ?? false);
-  const [filtersPinned, setFiltersPinned] = useState(initialSnapshot?.filtersPinned ?? false);
-  const [hasAutoCollapsed, setHasAutoCollapsed] = useState(initialSnapshot?.hasAutoCollapsed ?? false);
-  const filtersWrapperRef = useRef<HTMLDivElement | null>(null);
-  const productsGridRef = useRef<HTMLDivElement | null>(null);
-  const suppressAutoCollapseRef = useRef(false);
-  const lastScrollYRef = useRef(0);
-  const lastGestureAtRef = useRef(0);
-  const downScrollCountRef = useRef(0);
+  const [selectedGrades, setSelectedGrades] = useState<string[]>(initialSnapshot?.selectedGrades || []);
+  const [sortBy, setSortBy] = useState<SortOption>(initialSnapshot?.sortBy || "featured");
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [showCatalogNav, setShowCatalogNav] = useState(false);
   const restoringCatalogRef = useRef(shouldRestoreCatalog);
   const pendingRestoreScrollRef = useRef<number | null>(null);
   const shouldReplaceRestoreStateRef = useRef(false);
+  const productsSectionRef = useRef<HTMLDivElement | null>(null);
+  const catalogNavRef = useRef<HTMLDivElement | null>(null);
 
   const { data } = useQuery({
     queryKey: ["products"],
@@ -257,22 +357,59 @@ export function HomePage() {
 
   const products = data?.products || [];
 
+  const availableGrades = useMemo(() => {
+    const grades = new Set(
+      products
+        .filter((product) => product.category === selectedCategory)
+        .map(getProductGrade)
+        .filter(Boolean)
+    );
+    return Array.from(grades).sort((a, b) => b.localeCompare(a, undefined, { numeric: true }));
+  }, [products, selectedCategory]);
+
   const filteredProducts = useMemo(() => {
-    const byCategory = products.filter((product) => product.category === selectedCategory);
-    if (selectedCategory !== "strains" || selectedStrainFilter === "all") return byCategory;
-    return byCategory.filter((product) => (product.strainType || "unknown").toLowerCase() === selectedStrainFilter);
-  }, [products, selectedCategory, selectedStrainFilter]);
+    let next = products.filter((product) => product.category === selectedCategory);
+
+    if (selectedCategory === "strains" && selectedStrainFilter !== "all") {
+      next = next.filter((product) => (product.strainType || "unknown").toLowerCase() === selectedStrainFilter);
+    }
+
+    if (selectedGrades.length) {
+      next = next.filter((product) => selectedGrades.includes(getProductGrade(product)));
+    }
+
+    if (sortBy === "price-asc") {
+      next = [...next].sort((a, b) => getStartPrice(a).value - getStartPrice(b).value);
+    } else if (sortBy === "price-desc") {
+      next = [...next].sort((a, b) => getStartPrice(b).value - getStartPrice(a).value);
+    } else if (sortBy === "name-asc") {
+      next = [...next].sort((a, b) => a.name.localeCompare(b.name));
+    }
+
+    return next;
+  }, [products, selectedCategory, selectedStrainFilter, selectedGrades, sortBy]);
+
+  const activeFiltersCount = (selectedStrainFilter !== "all" ? 1 : 0) + selectedGrades.length + (sortBy !== "featured" ? 1 : 0);
 
   function persistCatalogState() {
     const snapshot: HomeSnapshot = {
       scrollY: window.scrollY,
       selectedCategory,
       selectedStrainFilter,
-      filtersCollapsed,
-      filtersPinned,
-      hasAutoCollapsed
+      selectedGrades,
+      sortBy
     };
     sessionStorage.setItem(HOME_SNAPSHOT_KEY, JSON.stringify(snapshot));
+  }
+
+  function toggleGrade(grade: string) {
+    setSelectedGrades((current) => (current.includes(grade) ? current.filter((value) => value !== grade) : [...current, grade]));
+  }
+
+  function clearFilters() {
+    setSelectedStrainFilter("all");
+    setSelectedGrades([]);
+    setSortBy("featured");
   }
 
   useEffect(() => {
@@ -285,7 +422,7 @@ export function HomePage() {
     persistCatalogState();
     window.addEventListener("scroll", persistCatalogState, { passive: true });
     return () => window.removeEventListener("scroll", persistCatalogState);
-  }, [selectedCategory, selectedStrainFilter, filtersCollapsed, filtersPinned, hasAutoCollapsed]);
+  }, [selectedCategory, selectedStrainFilter, selectedGrades, sortBy]);
 
   useLayoutEffect(() => {
     if (!shouldRestoreCatalog || !initialSnapshot) return;
@@ -293,8 +430,6 @@ export function HomePage() {
     restoringCatalogRef.current = true;
     pendingRestoreScrollRef.current = Number.isFinite(initialSnapshot.scrollY) ? initialSnapshot.scrollY : 0;
     shouldReplaceRestoreStateRef.current = true;
-    suppressAutoCollapseRef.current = true;
-    downScrollCountRef.current = 0;
 
     const restoreScroll = () => window.scrollTo({ top: Number.isFinite(initialSnapshot.scrollY) ? initialSnapshot.scrollY : 0, behavior: "auto" });
     restoreScroll();
@@ -327,108 +462,54 @@ export function HomePage() {
 
   useEffect(() => {
     if (restoringCatalogRef.current) {
-      setFiltersCollapsed(true);
-      setHasAutoCollapsed(true);
-      suppressAutoCollapseRef.current = true;
-      downScrollCountRef.current = 0;
       return;
     }
     setSelectedStrainFilter("all");
-    setFiltersCollapsed(false);
-    setFiltersPinned(false);
-    setHasAutoCollapsed(false);
-    suppressAutoCollapseRef.current = true;
-    downScrollCountRef.current = 0;
+    setSelectedGrades([]);
+    setSortBy("featured");
+    setFiltersOpen(false);
   }, [selectedCategory]);
 
   useEffect(() => {
-    if (restoringCatalogRef.current) {
-      setFiltersCollapsed(true);
-      setHasAutoCollapsed(true);
-      suppressAutoCollapseRef.current = true;
-      downScrollCountRef.current = 0;
-      return;
-    }
-    setFiltersCollapsed(false);
-    setFiltersPinned(false);
-    setHasAutoCollapsed(false);
-    suppressAutoCollapseRef.current = true;
-    downScrollCountRef.current = 0;
-  }, [selectedStrainFilter]);
+    const section = productsSectionRef.current;
+    if (!section) return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        setShowCatalogNav(entry.isIntersecting);
+      },
+      {
+        threshold: 0,
+        rootMargin: "-210px 0px 0px 0px"
+      }
+    );
+
+    observer.observe(section);
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
-    const stickyTop = 88;
-    let lastOffset = -1;
+    if (!filtersOpen) return;
 
-    function updateOffset() {
-      const wrapperTop = filtersWrapperRef.current?.getBoundingClientRect().top ?? stickyTop;
-      const wrapperHeight = filtersWrapperRef.current?.getBoundingClientRect().height ?? 0;
-      const stickyActive = wrapperTop <= stickyTop + 1;
-      const nextOffset = stickyActive ? Math.max(0, Math.round(wrapperHeight - 12)) : 0;
-      if (nextOffset !== lastOffset && productsGridRef.current) {
-        lastOffset = nextOffset;
-        productsGridRef.current.style.paddingTop = `${nextOffset}px`;
-      }
-
-      setFiltersPinned((current) => (current === stickyActive ? current : stickyActive));
-
-      if (!stickyActive) {
-        downScrollCountRef.current = 0;
-      }
+    function handlePointerDown(event: MouseEvent | TouchEvent) {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (catalogNavRef.current?.contains(target)) return;
+      setFiltersOpen(false);
     }
 
-    updateOffset();
-    window.addEventListener("scroll", updateOffset, { passive: true });
-    window.addEventListener("resize", updateOffset);
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("touchstart", handlePointerDown, { passive: true });
 
     return () => {
-      window.removeEventListener("scroll", updateOffset);
-      window.removeEventListener("resize", updateOffset);
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("touchstart", handlePointerDown);
     };
-  }, [selectedCategory, selectedStrainFilter]);
-
-  useEffect(() => {
-    function registerDownGesture() {
-      if (suppressAutoCollapseRef.current || hasAutoCollapsed || !filtersPinned) return;
-      const now = Date.now();
-      if (now - lastGestureAtRef.current < 180) return;
-      lastGestureAtRef.current = now;
-      downScrollCountRef.current += 1;
-
-      if (downScrollCountRef.current >= 2) {
-        setFiltersCollapsed(true);
-        setHasAutoCollapsed(true);
-      }
-    }
-
-    function onWheel(event: WheelEvent) {
-      if (event.deltaY <= 0) return;
-      suppressAutoCollapseRef.current = false;
-      registerDownGesture();
-    }
-
-    function onTouchMove() {
-      const currentY = window.scrollY;
-      if (currentY - lastScrollYRef.current > 6) {
-        suppressAutoCollapseRef.current = false;
-        registerDownGesture();
-      }
-      lastScrollYRef.current = currentY;
-    }
-
-    lastScrollYRef.current = window.scrollY;
-    window.addEventListener("wheel", onWheel, { passive: true });
-    window.addEventListener("touchmove", onTouchMove, { passive: true });
-
-    return () => {
-      window.removeEventListener("wheel", onWheel);
-      window.removeEventListener("touchmove", onTouchMove);
-    };
-  }, [filtersPinned, hasAutoCollapsed]);
+  }, [filtersOpen]);
 
   return (
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-5 px-4 py-4 sm:px-6 lg:px-10">
-      <div className="sticky top-0 z-30 pb-1 pt-1">
+      <div className="sticky top-0 z-30 space-y-2 pb-2 pt-1">
         <header className="rounded-full border border-white/10 bg-[#0b120f]/95 px-4 py-3">
           <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-3">
@@ -451,6 +532,40 @@ export function HomePage() {
             </div>
           </div>
         </header>
+        <motion.div
+          ref={catalogNavRef}
+          initial={false}
+          animate={{
+            opacity: showCatalogNav ? 1 : 0,
+            y: showCatalogNav ? 0 : -16,
+            maxHeight: showCatalogNav ? (filtersOpen ? 720 : 120) : 0
+          }}
+          transition={{ duration: 0.28, ease: "easeOut" }}
+          className={cn("overflow-hidden", showCatalogNav ? "pointer-events-auto" : "pointer-events-none")}
+        >
+          <div className="space-y-2">
+            <CategoryTabs
+              selectedCategory={selectedCategory}
+              setSelectedCategory={setSelectedCategory}
+              filtersOpen={filtersOpen}
+              setFiltersOpen={setFiltersOpen}
+              activeFiltersCount={activeFiltersCount}
+            />
+            {filtersOpen ? (
+              <FiltersPanel
+                selectedCategory={selectedCategory}
+                selectedStrainFilter={selectedStrainFilter}
+                setSelectedStrainFilter={setSelectedStrainFilter}
+                selectedGrades={selectedGrades}
+                toggleGrade={toggleGrade}
+                clearFilters={clearFilters}
+                sortBy={sortBy}
+                setSortBy={setSortBy}
+                availableGrades={availableGrades}
+              />
+            ) : null}
+          </div>
+        </motion.div>
       </div>
 
       <section className="-mx-4 sm:-mx-6 lg:-mx-10">
@@ -500,58 +615,8 @@ export function HomePage() {
         </div>
       </section>
 
-      <section id="catalog" className="pt-5">
-        <div ref={filtersWrapperRef} className="sticky top-[88px] z-20 -mx-1 mb-6 px-1 pb-4 pt-1">
-          <div className="mx-auto w-full max-w-xl">
-            <motion.button
-              type="button"
-              onClick={() => {
-                setFiltersPinned(true);
-                setFiltersCollapsed((current) => {
-                  const next = !current;
-                  if (!next) {
-                    setHasAutoCollapsed(false);
-                  }
-                  return next;
-                });
-                suppressAutoCollapseRef.current = true;
-                downScrollCountRef.current = 0;
-              }}
-              animate={{ opacity: filtersPinned ? 1 : 0, y: filtersPinned ? 0 : -8 }}
-              transition={{ duration: 0.2, ease: "easeOut" }}
-              className="mx-auto mb-2 flex h-10 items-center justify-center gap-2 rounded-full border border-white/10 bg-[#101714] px-4 text-mist/80 shadow-lg shadow-black/20"
-              aria-label={filtersCollapsed ? "Open filters" : "Close filters"}
-            >
-              <ChevronDown className={cn("h-4 w-4 transition-transform", filtersCollapsed ? "rotate-180" : "")} />
-              <span className="text-[11px] font-semibold uppercase tracking-[0.28em]">Filters</span>
-            </motion.button>
-
-            <motion.div
-              animate={{
-                y: filtersCollapsed && filtersPinned ? -24 : 0,
-                maxHeight: filtersCollapsed && filtersPinned ? 0 : 180,
-                opacity: filtersCollapsed && filtersPinned ? 0 : 1
-              }}
-              transition={{ duration: 0.24, ease: "easeOut" }}
-              className={cn("overflow-hidden", filtersCollapsed && filtersPinned ? "pointer-events-none" : "pointer-events-auto")}
-            >
-              <div className="space-y-2.5">
-                <CategoryTabs selectedCategory={selectedCategory} setSelectedCategory={setSelectedCategory} />
-                {selectedCategory === "strains" ? (
-                  <StrainTypeTabs selectedStrainFilter={selectedStrainFilter} setSelectedStrainFilter={setSelectedStrainFilter} />
-                ) : null}
-              </div>
-            </motion.div>
-          </div>
-        </div>
-
-        <div
-          ref={productsGridRef}
-          className={cn(
-            "mx-auto grid w-full justify-center gap-4",
-            selectedCategory === "strains" ? "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3" : "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3"
-          )}
-        >
+      <section id="catalog" className="pt-14 sm:pt-20">
+        <div ref={productsSectionRef} className="mx-auto grid w-full justify-center gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
           {filteredProducts.map((product) => (
             <div key={product.id}>
               {selectedCategory === "strains" ? (

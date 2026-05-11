@@ -3,7 +3,7 @@ import { useForm } from "react-hook-form";
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { ArrowLeft, Truck } from "lucide-react";
+import { ArrowLeft, Minus, Plus, Trash2, Truck } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAppStore } from "@/lib/store";
 import { formatCurrency } from "@/lib/utils";
@@ -24,6 +24,7 @@ export function CheckoutPage() {
   const navigate = useNavigate();
   const cart = useAppStore((state) => state.cart);
   const clearCart = useAppStore((state) => state.clearCart);
+  const updateQty = useAppStore((state) => state.updateQty);
   const user = useAppStore((state) => state.user);
   const [showAuth, setShowAuth] = useState(false);
   const { register, handleSubmit } = useForm<CheckoutForm>({
@@ -128,14 +129,45 @@ export function CheckoutPage() {
             <>
               {cart.map((item) => (
                 <div key={item.lineId || item.productId} className="flex items-center justify-between gap-4 rounded-[1.4rem] bg-white/[0.03] p-4 ring-1 ring-white/5">
-                  <div className="space-y-1">
-                    <p className="font-semibold text-white">{item.name}</p>
-                    <div className="flex flex-wrap items-center gap-2 text-sm text-mist/58">
-                      {item.variantLabel ? <span>{item.variantLabel}</span> : null}
-                      <span>Qty {item.quantity}</span>
+                  <div className="min-w-0 flex-1 space-y-3">
+                    <div className="space-y-1">
+                      <p className="font-semibold text-white">{item.name}</p>
+                      <div className="flex flex-wrap items-center gap-2 text-sm text-mist/58">
+                        {item.variantLabel ? <span>{item.variantLabel}</span> : null}
+                        <span>Qty {item.quantity}</span>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="inline-flex items-center rounded-full bg-white/[0.05] p-1 ring-1 ring-white/6">
+                        <button
+                          type="button"
+                          onClick={() => updateQty(item.lineId || item.productId, item.quantity - 1)}
+                          className="grid h-8 w-8 place-items-center rounded-full text-mist/78 transition hover:bg-white/8 hover:text-white"
+                          aria-label={`Decrease quantity of ${item.name}`}
+                        >
+                          <Minus className="h-4 w-4" />
+                        </button>
+                        <span className="min-w-[2rem] text-center text-sm font-semibold text-white">{item.quantity}</span>
+                        <button
+                          type="button"
+                          onClick={() => updateQty(item.lineId || item.productId, item.quantity + 1)}
+                          className="grid h-8 w-8 place-items-center rounded-full text-mist/78 transition hover:bg-white/8 hover:text-white"
+                          aria-label={`Increase quantity of ${item.name}`}
+                        >
+                          <Plus className="h-4 w-4" />
+                        </button>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => updateQty(item.lineId || item.productId, 0)}
+                        className="inline-flex items-center gap-2 rounded-full bg-white/[0.04] px-3 py-2 text-sm font-medium text-mist/72 ring-1 ring-white/6 transition hover:bg-white/[0.07] hover:text-white"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        Remove
+                      </button>
                     </div>
                   </div>
-                  <p className="font-semibold text-emerald-100">{formatCurrency(item.price * item.quantity)}</p>
+                  <p className="shrink-0 font-semibold text-emerald-100">{formatCurrency(item.price * item.quantity)}</p>
                 </div>
               ))}
               <div className="rounded-[1.5rem] bg-white/[0.03] p-4 text-sm text-mist/70 ring-1 ring-white/5">
